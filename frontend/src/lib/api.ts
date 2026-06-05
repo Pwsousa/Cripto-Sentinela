@@ -46,5 +46,12 @@ export const api = {
     list: () => request<Record<string, { by: string; timestamp: string }>>("GET", "/revocation"),
   },
 
+  oracle: {
+    challenge: () => request<{ ok: boolean }>("POST", "/oracle/challenge"),
+    answer: (answer: string) => request<{ ok: boolean }>("POST", "/oracle/answer", { answer }),
+    echo: () => request<{ ok: boolean }>("POST", "/oracle/echo"),
+    grades: () => request<{ ok: boolean }>("POST", "/oracle/grades"),
+  },
+
   status: () => request<{ mqtt: string; identity: string | null }>("GET", "/status"),
 };
