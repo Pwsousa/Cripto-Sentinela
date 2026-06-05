@@ -1,0 +1,164 @@
+@import "tailwindcss";
+
+@theme {
+  --color-background:          #070a0e;
+  --color-surface:             #0c1018;
+  --color-surface-2:           #111820;
+  --color-border:              #1c2a3a;
+  --color-border-bright:       #2a3f52;
+  --color-foreground:          #a8bfcc;
+  --color-foreground-dim:      #4a6275;
+  --color-muted-foreground:    #4a6275;
+  --color-input:               #0a0f16;
+
+  --color-primary:             #00e676;
+  --color-primary-dim:         #00874a;
+  --color-primary-foreground:  #000000;
+
+  --color-cyan:                #00bcd4;
+  --color-amber:               #ffab00;
+  --color-danger:              #f44336;
+  --color-danger-dim:          #7f1d1d;
+
+  --color-secondary:           #111820;
+  --color-destructive-foreground: #ffffff;
+
+  --font-mono: "Courier New", Courier, monospace;
+}
+
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background-color: #070a0e;
+  color: #a8bfcc;
+  font-family: "Courier New", Courier, monospace;
+  min-height: 100vh;
+}
+
+/* ── Scanlines overlay ── */
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(0, 0, 0, 0.08) 2px,
+    rgba(0, 0, 0, 0.08) 4px
+  );
+  pointer-events: none;
+  z-index: 9999;
+}
+
+/* ── Animations ── */
+@keyframes blink {
+  0%, 49% { opacity: 1; }
+  50%, 100% { opacity: 0; }
+}
+
+@keyframes pulse-green {
+  0%, 100% { box-shadow: 0 0 4px #00e676; }
+  50%       { box-shadow: 0 0 12px #00e676, 0 0 20px #00e676; }
+}
+
+@keyframes pulse-amber {
+  0%, 100% { box-shadow: 0 0 4px #ffab00; }
+  50%       { box-shadow: 0 0 12px #ffab00; }
+}
+
+@keyframes scan-in {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes flicker {
+  0%, 95%, 100% { opacity: 1; }
+  96%            { opacity: 0.6; }
+  97%            { opacity: 1; }
+  98%            { opacity: 0.7; }
+}
+
+/* ── Utility classes ── */
+.animate-blink        { animation: blink 1s step-end infinite; }
+.animate-pulse-green  { animation: pulse-green 2s ease-in-out infinite; }
+.animate-pulse-amber  { animation: pulse-amber 1.5s ease-in-out infinite; }
+.animate-scan-in      { animation: scan-in 0.2s ease-out; }
+.animate-flicker      { animation: flicker 8s ease-in-out infinite; }
+
+/* ── LED dots ── */
+.led {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.led-green  { background: #00e676; box-shadow: 0 0 6px #00e676; }
+.led-amber  { background: #ffab00; box-shadow: 0 0 6px #ffab00; }
+.led-red    { background: #f44336; box-shadow: 0 0 6px #f44336; }
+.led-cyan   { background: #00bcd4; box-shadow: 0 0 6px #00bcd4; }
+.led-dim    { background: #1c2a3a; }
+
+/* ── Panel ── */
+.panel {
+  background: #0c1018;
+  border: 1px solid #1c2a3a;
+  border-radius: 2px;
+}
+
+.panel-header {
+  background: #0a0e15;
+  border-bottom: 1px solid #1c2a3a;
+  padding: 6px 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: #4a6275;
+}
+
+.panel-header .accent { color: #00e676; }
+
+/* ── Inputs ── */
+input, textarea, select {
+  background: #0a0f16;
+  border: 1px solid #1c2a3a;
+  color: #a8bfcc;
+  font-family: "Courier New", Courier, monospace;
+  font-size: 13px;
+  border-radius: 2px;
+  outline: none;
+  transition: border-color 0.15s;
+}
+input:focus, textarea:focus, select:focus {
+  border-color: #00e676;
+  box-shadow: 0 0 0 1px #00e67640;
+}
+
+select option { background: #0c1018; }
+
+/* ── Scrollbar ── */
+::-webkit-scrollbar       { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: #0a0e15; }
+::-webkit-scrollbar-thumb { background: #1c2a3a; border-radius: 2px; }
+::-webkit-scrollbar-thumb:hover { background: #2a3f52; }
+
+/* ── Glitch text effect (classification banner) ── */
+.classification {
+  font-size: 10px;
+  letter-spacing: 0.3em;
+  color: #f44336;
+  text-shadow: 0 0 8px #f44336;
+  text-align: center;
+  padding: 4px;
+  border-top: 1px solid #f4433640;
+  border-bottom: 1px solid #f4433640;
+  background: #f443360a;
+}
