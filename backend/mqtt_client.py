@@ -11,9 +11,15 @@ logger = logging.getLogger(__name__)
 
 
 class MqttClient:
-    def __init__(self, unit_id: str, on_message: Callable[[str, str], None]):
+    def __init__(
+        self,
+        unit_id: str,
+        on_message: Callable[[str, str], None],
+        on_status: Callable[[bool], None] | None = None,
+    ):
         self.unit_id = unit_id.lower()
         self._on_message_cb = on_message
+        self._on_status_cb = on_status
         self._client: mqtt.Client | None = None
         self._connected = False
 
@@ -51,15 +57,20 @@ class MqttClient:
                 (f"sisdef/broadcast/chaves/+", 0),
                 (f"sisdef/direto/{self.unit_id}", 0),
                 ("sisdef/broadcast/revogacao", 0),
+                ("sisdef/broadcast/notas", 0),
             ]
             client.subscribe(topics)
-            logger.info("Subscribed: IFF broadcast, direct, revocation")
+            logger.info("Subscribed: IFF broadcast, direct, revocation, notas")
+            if self._on_status_cb:
+                self._on_status_cb(True)
         else:
             logger.error(f"MQTT connect failed rc={rc}")
 
     def _on_disconnect(self, client, userdata, rc):
         self._connected = False
         logger.warning(f"MQTT disconnected rc={rc}")
+        if self._on_status_cb:
+            self._on_status_cb(False)
 
     def _on_message(self, client, userdata, msg):
         try:
