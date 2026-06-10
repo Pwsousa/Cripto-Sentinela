@@ -130,7 +130,7 @@ Acesse `http://localhost:5173`.
 1. UT abre a interface e insere o codinome (ex: `ut-zulu`)
 2. Backend gera par RSA-2048 e par ECDSA P-256
 3. Chaves privadas salvas em `backend/data/identity.json`
-4. Chaves públicas publicadas em `sisdef/broadcast/chaves/ut-zulu` com `retain=true`
+4. Chaves públicas publicadas em `sisdef/broadcast/chaves/ut-november` com `retain=true`
 5. Outras UTs recebem o broadcast e armazenam as chaves no trust store local
 
 ### Fase 2 — Envio de Ordem Sigilosa
