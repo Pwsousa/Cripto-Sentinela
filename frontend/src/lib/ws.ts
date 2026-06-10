@@ -7,6 +7,7 @@ export type WsEventType =
   | "iff_received"
   | "revocation_applied"
   | "mqtt_status"
+  | "grades"
   | "log";
 
 export interface WsEvent {

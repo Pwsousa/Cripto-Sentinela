@@ -206,6 +206,10 @@ function Dashboard({ unitId, onReset }: { unitId: string; onReset: () => void })
   const [message, setMessage]       = useState(`{"id_unidade":"${unitId}","cmd":"echo"}`);
   const [sending, setSending]       = useState(false);
   const [revokeTarget, setRevokeTarget] = useState("");
+  const [challengeQ, setChallengeQ] = useState("");
+  const [answer, setAnswer]         = useState("");
+  const [scoreboard, setScoreboard] = useState<unknown>(null);
+  const [oracleBusy, setOracleBusy] = useState(false);
   const [clock, setClock]           = useState(now());
   const logEndRef = useRef<HTMLDivElement>(null);
 
@@ -263,8 +267,18 @@ function Dashboard({ unitId, onReset }: { unitId: string; onReset: () => void })
         }, ...prev].slice(0, 100));
         if (status === "ok") log("rx", `Mensagem íntegra de ${from}`);
         else log("err", `Mensagem ${status} de ${from}: ${event.detail ?? ""}`);
+        // Captura desafio vindo do Oráculo
+        if (from === "oraculo" && status === "ok" && event.plaintext) {
+          setChallengeQ(String(event.plaintext));
+          log("rx", "📡 Desafio recebido do Oráculo");
+          toast.info("Desafio recebido do Oráculo");
+        }
         break;
       }
+      case "grades":
+        setScoreboard(event.scoreboard ?? null);
+        log("rx", "📊 Placar de notas atualizado");
+        break;
       case "log":
         log((event.level as LogLevel) ?? "info", String(event.text ?? ""));
         break;
@@ -306,6 +320,46 @@ function Dashboard({ unitId, onReset }: { unitId: string; onReset: () => void })
       await api.trusted.forget(unit);
       api.trusted.list().then(setTrusted).catch(() => {});
       log("info", `Chave de ${unit} removida localmente`);
+    } catch (err) { toast.error((err as Error).message); }
+  }
+
+  async function oracleChallenge() {
+    setOracleBusy(true);
+    try {
+      await api.oracle.challenge();
+      log("tx", "Desafio solicitado ao Oráculo");
+      toast.success("Desafio solicitado");
+    } catch (err) { toast.error((err as Error).message); }
+    finally { setOracleBusy(false); }
+  }
+
+  async function oracleAnswer(e: React.FormEvent) {
+    e.preventDefault();
+    const a = answer.trim();
+    if (!a) { toast.error("Digite a resposta (só o número)"); return; }
+    setOracleBusy(true);
+    try {
+      await api.oracle.answer(a);
+      log("tx", `Resposta cifrada → Oráculo: "${a}" (cmd=resposta)`);
+      toast.success(`Resposta "${a}" enviada`);
+      setAnswer("");
+    } catch (err) {
+      toast.error((err as Error).message);
+      log("err", `Falha resposta: ${(err as Error).message}`);
+    } finally { setOracleBusy(false); }
+  }
+
+  async function oracleEcho() {
+    try {
+      await api.oracle.echo();
+      log("tx", "Echo enviado ao Oráculo (cmd=echo)");
+    } catch (err) { toast.error((err as Error).message); }
+  }
+
+  async function oracleGrades() {
+    try {
+      await api.oracle.grades();
+      log("tx", "Atualização de notas solicitada");
     } catch (err) { toast.error((err as Error).message); }
   }
 
@@ -473,7 +527,76 @@ function Dashboard({ unitId, onReset }: { unitId: string; onReset: () => void })
         </div>
 
         {/* ── CENTER ── */}
-        <div style={{ background: "#070a0e", display: "flex", flexDirection: "column", gap: 1, overflow: "hidden" }}>
+        <div style={{ background: "#070a0e", display: "flex", flexDirection: "column", gap: 1, overflow: "auto" }}>
+
+          {/* Oráculo — Desafio */}
+          <div style={{ background: "#0c1018", flex: "0 0 auto" }}>
+            <div className="panel-header">
+              <span><span className="led led-amber animate-pulse-amber" style={{ marginRight: 6 }} />DESAFIO DO ORÁCULO</span>
+              <span>CICLO SEGURO · DLT</span>
+            </div>
+            <div style={{ padding: 14, display: "flex", flexDirection: "column", gap: 12 }}>
+
+              {/* Ações */}
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <button type="button" onClick={oracleChallenge} disabled={oracleBusy || mqttState !== "online"}
+                  style={oracleBtn("#ffab00", oracleBusy || mqttState !== "online")}>
+                  ① SOLICITAR DESAFIO
+                </button>
+                <TactBtn onClick={oracleEcho} label="◇ ECHO" color="#00bcd4" small />
+                <TactBtn onClick={oracleGrades} label="📊 ATUALIZAR NOTAS" color="#7c4dff" small />
+              </div>
+
+              {/* Pergunta recebida */}
+              <div>
+                <div style={{ fontSize: 9, color: "#2a3f52", letterSpacing: "0.12em", marginBottom: 4 }}>PERGUNTA DECIFRADA</div>
+                <div style={{
+                  background: "#070a0e",
+                  border: `1px solid ${challengeQ ? "#ffab0060" : "#1c2a3a"}`,
+                  borderRadius: 2,
+                  padding: "10px 12px",
+                  fontSize: 13,
+                  color: challengeQ ? "#a8bfcc" : "#2a3f52",
+                  minHeight: 38,
+                }}>
+                  {challengeQ || "aguardando desafio do Oráculo…"}
+                </div>
+              </div>
+
+              {/* Resposta */}
+              <form onSubmit={oracleAnswer} style={{ display: "flex", gap: 8, alignItems: "flex-end" }}>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 9, color: "#2a3f52", letterSpacing: "0.12em", marginBottom: 4 }}>
+                    RESPOSTA — APENAS O NÚMERO
+                  </div>
+                  <input
+                    value={answer}
+                    onChange={e => setAnswer(e.target.value)}
+                    placeholder='ex: 12'
+                    style={{ width: "100%", padding: "8px 10px" }}
+                  />
+                </div>
+                <button type="submit" disabled={oracleBusy || mqttState !== "online"}
+                  style={oracleBtn("#00e676", oracleBusy || mqttState !== "online")}>
+                  ③ ENVIAR RESPOSTA
+                </button>
+              </form>
+
+              {/* Placar */}
+              {scoreboard != null && (
+                <div>
+                  <div style={{ fontSize: 9, color: "#7c4dff", letterSpacing: "0.12em", marginBottom: 4 }}>PLACAR DE NOTAS</div>
+                  <pre style={{
+                    margin: 0, fontSize: 11, color: "#a8bfcc", background: "#070a0e",
+                    border: "1px solid #1c2a3a", borderRadius: 2, padding: "8px 10px",
+                    whiteSpace: "pre-wrap", wordBreak: "break-all", maxHeight: 160, overflowY: "auto",
+                  }}>
+                    {JSON.stringify(scoreboard, null, 2)}
+                  </pre>
+                </div>
+              )}
+            </div>
+          </div>
 
           {/* Compose */}
           <div style={{ background: "#0c1018", flex: "0 0 auto" }}>
@@ -725,6 +848,23 @@ function InboxBadge({ status }: { status: InboxEntry["status"] }) {
       {STATUS_LABEL[status]}
     </span>
   );
+}
+
+function oracleBtn(color: string, disabled: boolean): React.CSSProperties {
+  return {
+    padding: "8px 14px",
+    background: color,
+    color: "#000",
+    border: "none",
+    borderRadius: 2,
+    fontSize: 10,
+    letterSpacing: "0.15em",
+    fontFamily: "inherit",
+    fontWeight: 700,
+    cursor: disabled ? "not-allowed" : "pointer",
+    opacity: disabled ? 0.4 : 1,
+    whiteSpace: "nowrap",
+  };
 }
 
 function Tag({ label, color }: { label: string; color: string }) {
