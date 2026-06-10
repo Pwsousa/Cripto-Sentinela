@@ -70,6 +70,9 @@ class Protocol:
         payload = json.dumps({
             "id_unidade": self._identity["id_unidade"],
             "chave_publica_rsa": self._identity["rsa_public_b64"],
+            # Oráculo exige "ecdsa"; spec escrito usa "eddsa". Publica ambos
+            # pra conformidade com o documento E interoperar com o Oráculo/colegas.
+            "chave_publica_ecdsa": self._identity["ecdsa_public_b64"],
             "chave_publica_eddsa": self._identity["ecdsa_public_b64"],
         })
         self.mqtt.publish(
@@ -81,7 +84,7 @@ class Protocol:
 
     # ---------- Send message ----------
 
-    def send_message(self, dest: str, plaintext: str) -> dict:
+    def send_message(self, dest: str, plaintext: str, cmd: str | None = None) -> dict:
         if not self._identity or not self._ecdsa_priv:
             raise RuntimeError("Identidade não carregada")
 
@@ -100,10 +103,37 @@ class Protocol:
             recipient_rsa_pub=recipient_rsa_pub,
             sender_ecdsa_priv=self._ecdsa_priv,
             sender_id=self._identity["id_unidade"],
+            cmd=cmd,
         )
         self.mqtt.publish(f"sisdef/direto/{dest}", json.dumps(envelope))
-        logger.info(f"Message sent → {dest}")
+        logger.info(f"Message sent → {dest} (cmd={cmd})")
         return envelope
+
+    # ---------- Oráculo (desafio / notas) ----------
+
+    def request_challenge(self) -> dict:
+        """Passo 1 — publica pedido de desafio em claro no tópico do Oráculo."""
+        if not self._identity:
+            raise RuntimeError("Identidade não carregada")
+        payload = {"id_unidade": self._identity["id_unidade"], "cmd": "desafio"}
+        self.mqtt.publish("sisdef/direto/oraculo", json.dumps(payload))
+        logger.info("Challenge requested from oracle")
+        return payload
+
+    def send_answer(self, answer: str) -> dict:
+        """Passo 3 — cifra apenas a string do número e envia com cmd=resposta."""
+        return self.send_message("oraculo", answer, cmd="resposta")
+
+    def echo_oracle(self, content: str = "ping") -> dict:
+        """Testa conexão/decriptografia com cmd=echo."""
+        return self.send_message("oraculo", content, cmd="echo")
+
+    def request_grades(self) -> dict:
+        """Passo 4 — solicita atualização do placar de notas."""
+        payload = {"cmd": "atualizar_notas"}
+        self.mqtt.publish("sisdef/broadcast/notas", json.dumps(payload))
+        logger.info("Grades update requested")
+        return payload
 
     # ---------- Revocation ----------
 
@@ -120,7 +150,7 @@ class Protocol:
             "timestamp": datetime.now(timezone.utc).isoformat(),
         }
         rev_bytes = json.dumps(revogacao, separators=(",", ":"), sort_keys=True).encode()
-        sig = crypto.ecdsa_sign(self._ecdsa_priv, crypto.sha256(rev_bytes))
+        sig = crypto.ecdsa_sign(self._ecdsa_priv, rev_bytes)
 
         pkt = {
             "remetente": self._identity["id_unidade"],
@@ -143,8 +173,21 @@ class Protocol:
             await self._handle_iff(payload)
         elif topic == "sisdef/broadcast/revogacao":
             await self._handle_revocation(payload)
+        elif topic == "sisdef/broadcast/notas":
+            await self._handle_grades(payload)
         elif topic == f"sisdef/direto/{my_id}":
             await self._handle_direct(payload)
+
+    async def _handle_grades(self, payload: str):
+        try:
+            obj = json.loads(payload)
+        except Exception:
+            return
+        # Ignora os comandos de pedido (atualizar_notas) que trafegam no mesmo tópico
+        if isinstance(obj, dict) and obj.get("cmd"):
+            return
+        await self.ws.broadcast({"type": "grades", "scoreboard": obj})
+        logger.info("Grades scoreboard received")
 
     async def _handle_iff(self, payload: str):
         try:
@@ -192,7 +235,7 @@ class Protocol:
 
             pub = crypto.load_ecdsa_pub_key(sender_keys["chave_publica_ecdsa"])
             rev_bytes = json.dumps(rev, separators=(",", ":"), sort_keys=True).encode()
-            valid = crypto.ecdsa_verify(pub, crypto.b64dec(sig_b64), crypto.sha256(rev_bytes))
+            valid = crypto.ecdsa_verify(pub, crypto.b64dec(sig_b64), rev_bytes)
 
             if not valid:
                 await self.ws.broadcast({

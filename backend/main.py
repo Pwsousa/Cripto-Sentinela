@@ -9,7 +9,7 @@ from . import deps, store
 from .mqtt_client import MqttClient
 from .protocol import Protocol
 from .ws_manager import WsManager
-from .routers import identity, messages, trust, revocation
+from .routers import identity, messages, trust, revocation, oracle
 
 logging.basicConfig(
     level=logging.INFO,
@@ -29,12 +29,29 @@ def _on_mqtt_message(topic: str, payload: str):
         asyncio.run_coroutine_threadsafe(protocol.handle_incoming(topic, payload), _loop)
 
 
+def _on_mqtt_status(connected: bool):
+    # Republica IFF (retido) assim que o broker conecta — garante que o Oráculo
+    # e demais UTs tenham nossa chave pública mesmo se o publish do startup falhou.
+    if connected:
+        protocol = deps._protocol
+        if protocol:
+            protocol.publish_iff()
+    if _loop:
+        asyncio.run_coroutine_threadsafe(
+            ws_manager.broadcast({
+                "type": "mqtt_status",
+                "state": "online" if connected else "offline",
+            }),
+            _loop,
+        )
+
+
 def _init_mqtt(unit_id: str) -> tuple[MqttClient, Protocol]:
     global _mqtt_client
     if _mqtt_client:
         _mqtt_client.disconnect()
 
-    client = MqttClient(unit_id, _on_mqtt_message)
+    client = MqttClient(unit_id, _on_mqtt_message, _on_mqtt_status)
     protocol = Protocol(client, ws_manager)
     _mqtt_client = client
     deps.set_protocol(protocol)
@@ -77,6 +94,7 @@ app.include_router(identity.router, prefix="/identity", tags=["identity"])
 app.include_router(messages.router, prefix="/messages", tags=["messages"])
 app.include_router(trust.router, prefix="/trusted", tags=["trust"])
 app.include_router(revocation.router, prefix="/revocation", tags=["revocation"])
+app.include_router(oracle.router, prefix="/oracle", tags=["oracle"])
 
 
 @app.websocket("/ws")

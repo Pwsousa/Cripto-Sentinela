@@ -122,19 +122,23 @@ def ecdsa_verify(pub_key, signature: bytes, data: bytes) -> bool:
 
 # ---------- Envelope (seal / open) ----------
 
-def seal_message(plaintext: str, recipient_rsa_pub, sender_ecdsa_priv, sender_id: str) -> dict:
+def seal_message(plaintext: str, recipient_rsa_pub, sender_ecdsa_priv, sender_id: str, cmd: str | None = None) -> dict:
     pt = plaintext.encode()
     enc = aes_gcm_encrypt(pt)
     wrapped_key = rsa_encrypt(recipient_rsa_pub, enc["key"])
-    sig = ecdsa_sign(sender_ecdsa_priv, sha256(pt))
-    return {
-        "id_unidade": sender_id,
+    # Assina a string em claro (ECDSA-SHA256, hash único — a lib hasheia internamente)
+    sig = ecdsa_sign(sender_ecdsa_priv, pt)
+    envelope = {"id_unidade": sender_id}
+    if cmd is not None:
+        envelope["cmd"] = cmd
+    envelope.update({
         "ciphertext_b64": b64enc(enc["ciphertext"]),
         "tag_autenticacao_b64": b64enc(enc["tag"]),
         "nonce_b64": b64enc(enc["nonce"]),
         "chave_sessao_cifrada_b64": b64enc(wrapped_key),
         "assinatura_b64": b64enc(sig),
-    }
+    })
+    return envelope
 
 
 def open_message(envelope: dict, my_rsa_priv, sender_ecdsa_pub) -> dict:
@@ -146,7 +150,8 @@ def open_message(envelope: dict, my_rsa_priv, sender_ecdsa_pub) -> dict:
 
     session_key = rsa_decrypt(my_rsa_priv, wrapped_key)
     pt = aes_gcm_decrypt(ct, tag, nonce, session_key)
-    verified = ecdsa_verify(sender_ecdsa_pub, sig, sha256(pt))
+    # Verifica assinatura sobre a string em claro (hash único)
+    verified = ecdsa_verify(sender_ecdsa_pub, sig, pt)
 
     return {
         "plaintext": pt.decode(),
